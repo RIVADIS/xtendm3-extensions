@@ -42,6 +42,7 @@ public class EXT030 extends ExtendM3Batch {
   Double agp2=0
   String agno = ""
   DBContainer saveOAGRLN
+  int returnRecords = 10000
 
 
 
@@ -176,7 +177,7 @@ public class EXT030 extends ExtendM3Batch {
           controleOAGRPR.set("OLOBV2", resultOAGRLN.get("UWOBV2").toString())
           controleOAGRPR.set("OLOBV3", resultOAGRLN.get("UWOBV3").toString())
           controleOAGRPR.set("OLOBV4", resultOAGRLN.get("UWOBV4").toString())
-          rechercheOAGRPRControle.readAll(controleOAGRPR, 10, {DBContainer controleResultOAGRPR ->
+          rechercheOAGRPRControle.readAll(controleOAGRPR, 10,returnRecords, {DBContainer controleResultOAGRPR ->
             String stdt2 =  resultOAGRLN.get("UWSTDT").toString()
             if(lvdt > (controleResultOAGRPR.get("OLSTDT").toString() as int)){
               stdt2 = lvdt
@@ -386,7 +387,7 @@ public class EXT030 extends ExtendM3Batch {
                 localDate = localDate.minusDays(1)
                 String target_lvdt = localDate.format(formatter) as String
                 logger.debug("LVDT:"+target_lvdt)
-                Map<String,String> params = ["CUNO":resultOAGRLN.get("UWCUNO").toString()
+                Map<String,String> paramsOIS060 = ["CUNO":resultOAGRLN.get("UWCUNO").toString()
                                              ,"AGNO":resultOAGRLN.get("UWAGNO").toString()
                                              ,"FDAT":resultOAGRLN.get("UWFDAT").toString()
                                              ,"STDT":resultOAGRLN.get("UWSTDT").toString()
@@ -396,10 +397,64 @@ public class EXT030 extends ExtendM3Batch {
                                              ,"OBV3":resultOAGRLN.get("UWOBV3").toString()
                                              ,"OBV4":resultOAGRLN.get("UWOBV4").toString()
                                              ,"LVDT":target_lvdt]
-                Closure<?> closure = {Map<String, String> response ->
-                  logger.debug("Response = ${response}")
+                Closure<?> closureOIS060 = {Map<String, String> response ->
+                  logger.debug("OIS060MI Response = ${response}")
                 }
-                miCaller.call("OIS060MI", "UpdCustBlkAgrLn", params, closure)
+                miCaller.call("OIS060MI", "UpdCustBlkAgrLn", paramsOIS060, closureOIS060)
+
+                //get OIS061 record then add one for new itno and new date
+                DBAction rechercheEXT061 = database.table("EXT061").index("00").selection("EXCUNO","EXAGNO","EXFDAT",
+                  "EXSTDT","EXPREX","EXOBV1","EXOBV2","EXOBV3","EXOBV4","EXZLOT","EXTX40","EXZSLO","EXZQTS",
+                  "EXZTRE","EXSTAC","EXPRRF","EXP001","EXP002","EXP003","EXP004","EXP005","EXP006","EXP007","EXP008"
+                  ,"EXP009","EXP010").build()
+                DBContainer containerEXT061 = rechercheEXT061.getContainer()
+                containerEXT061.set("EXCONO", currentCompany)
+                containerEXT061.set("EXCUNO",resultOAGRLN.get("UWCUNO").toString())
+                containerEXT061.set("EXAGNO",resultOAGRLN.get("UWAGNO").toString())
+                containerEXT061.set("EXFDAT",resultOAGRLN.get("UWFDAT").toString() as Integer)
+                containerEXT061.set("EXSTDT",resultOAGRLN.get("UWSTDT").toString() as Integer)
+                containerEXT061.set("EXPREX",resultOAGRLN.get("UWPREX").toString())
+                containerEXT061.set("EXOBV1",resultOAGRLN.get("UWOBV1").toString())
+
+                logger.debug("Ready to check in EXT061")
+
+                rechercheEXT061.readAll(containerEXT061,6,returnRecords,{DBContainer resultEXT061 ->
+                    Map<String,String> paramsEXT061 = [
+                      "CUNO":resultEXT061.get("EXCUNO").toString()
+                       ,"AGNO":resultEXT061.get("EXAGNO").toString()
+                       ,"FDAT":resultEXT061.get("EXFDAT").toString()
+                       ,"STDT":lvdt.toString()
+                       ,"PREX":resultEXT061.get("EXPREX").toString()
+                       ,"OBV1":itnz.toString()
+                       ,"OBV2":resultEXT061.get("EXOBV2").toString()
+                       ,"OBV3":resultEXT061.get("EXOBV3").toString()
+                       ,"OBV4":resultEXT061.get("EXOBV4").toString()
+                       ,"ZLOT":resultEXT061.get("EXZLOT").toString()
+                       ,"TX40":resultEXT061.get("EXTX40").toString()
+                       ,"ZSLO":resultEXT061.get("EXZSLO").toString()
+                       ,"ZQTS":resultEXT061.get("EXZQTS").toString()
+                       ,"ZTRE":resultEXT061.get("EXZTRE").toString()
+                       ,"STAC":resultEXT061.get("EXSTAC").toString()
+                       ,"PRRF":resultEXT061.get("EXPRRF").toString()
+                       ,"P001":resultEXT061.get("EXP001").toString()
+                       ,"P002":resultEXT061.get("EXP002").toString()
+                       ,"P003":resultEXT061.get("EXP003").toString()
+                       ,"P004":resultEXT061.get("EXP004").toString()
+                       ,"P005":resultEXT061.get("EXP005").toString()
+                       ,"P006":resultEXT061.get("EXP006").toString()
+                       ,"P007":resultEXT061.get("EXP007").toString()
+                       ,"P008":resultEXT061.get("EXP008").toString()
+                       ,"P009":resultEXT061.get("EXP009").toString()
+                       ,"P010":resultEXT061.get("EXP010").toString()
+                    ]
+
+                  Closure<?> closureEXT061 = {Map<String, String> response ->
+                    logger.debug("EXT061MI Response = ${response}")
+                  }
+
+                  logger.debug("Ready to call in EXT061 to add : Lot = ${resultEXT061.get("EXZLOT").toString() } for ${ itnz.toString() }")
+                  miCaller.call("EXT061MI", "AddCustBlkAgrLn", paramsEXT061, closureEXT061)
+                })
 
               }else{
                 logger.debug("UPDATE OAGRLN KO!")
