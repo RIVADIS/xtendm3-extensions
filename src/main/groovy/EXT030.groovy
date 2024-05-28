@@ -8,7 +8,11 @@
  * 20220128     APACE        COMX01 - Management of customer agreement
  * 20240205     MLECLERCQ    COMX01 - Correction switch date on source item line
  * 20240221     MLECLERCQ    COMX01 - def transformed to Map<String,String>
+ * 20240523     MLECLERCQ    COMX01 - Correction filtre client
+ * 20240528     MLECLERCQ    COMX01 - Correction lignes valides
  */
+
+
 import java.text.DecimalFormat
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -133,7 +137,7 @@ public class EXT030 extends ExtendM3Batch {
     }
 
 
-    DBAction rechercheOAGRLN = database.table("OAGRLN").index("00").matching(expression).selection( "UWCUNO","UWAGNO","UWFDAT","UWPREX","UWOBV1","UWOBV2","UWOBV3","UWOBV4","UWSTDT","UWLVDT","UWPRRF","UWPRLC","UWSPUN","UWSUNO","UWAGNB","UWAGQT","UWUNIT","UWD2QT","UWD3QT","UWNAQT").reverse().build()
+    DBAction rechercheOAGRLN = database.table("OAGRLN").index("00").matching(expression).selection( "UWCUNO","UWAGNO","UWFDAT","UWPREX","UWOBV1","UWOBV2","UWOBV3","UWOBV4","UWSTDT","UWLVDT","UWPRRF","UWPRLC","UWSPUN","UWSUNO","UWAGNB","UWAGQT","UWUNIT","UWD2QT","UWD3QT","UWNAQT","UWAGLN").reverse().build()
 
     DBContainer OAGRLN = rechercheOAGRLN.getContainer()
     OAGRLN.set("UWCONO", currentCompany)
@@ -141,20 +145,27 @@ public class EXT030 extends ExtendM3Batch {
     logger.debug("Read OAGRLN:")
     rechercheOAGRLN.readAll(OAGRLN, 1, {DBContainer resultOAGRLN ->
       saveOAGRLN = resultOAGRLN
+      String currentCuno = resultOAGRLN.get("UWCUNO").toString()
       logger.debug("CONO => "+currentCompany)
-      logger.debug("CUNO => "+resultOAGRLN.get("UWCUNO").toString())
+      logger.debug("CUNO => "+currentCuno + ", input CUNO=" + cuno)
       logger.debug("AGNO => "+resultOAGRLN.get("UWAGNO").toString())
       logger.debug("STDT => "+resultOAGRLN.get("UWSTDT").toString())
+      logger.debug("LVDT => "+resultOAGRLN.get("UWLVDT").toString())
       logger.debug("AGTP => "+agtp)
-      logger.debug("AGLN => "+lastOAGRLN(resultOAGRLN))
+      //logger.debug("AGLN => "+lastOAGRLN(resultOAGRLN))
+      logger.debug("AGLN => "+resultOAGRLN.get("UWAGLN").toString())
       logger.debug("OBV1 => "+resultOAGRLN.get("UWOBV1").toString())
       if(selection_isOK(agtp,resultOAGRLN)){
         if(article_cible_inexistant(resultOAGRLN)){
           String stdt = resultOAGRLN.get("UWSTDT").toString()
+          //logger.debug("Selection and article cible inexistants pour ligne : " + lastOAGRLN(resultOAGRLN))
+          logger.debug("Selection and article cible inexistants pour ligne : " + resultOAGRLN.get("UWAGLN").toString())
+          logger.debug("STDT : " + resultOAGRLN.get("UWSTDT").toString() + ", line LVDT : " + resultOAGRLN.get("UWLVDT").toString() + ", input LVDT : " + lvdt)
           if((resultOAGRLN.get("UWSTDT").toString() as int) < lvdt){
             stdt = lvdt
           }
           if(lvdt < (resultOAGRLN.get("UWFDAT").toString() as int)){
+            //TODO : check si normal de regarder lvdt  et non stdt?
             stdt = resultOAGRLN.get("UWFDAT").toString()
           }
 
@@ -179,12 +190,16 @@ public class EXT030 extends ExtendM3Batch {
           controleOAGRPR.set("OLOBV4", resultOAGRLN.get("UWOBV4").toString())
           rechercheOAGRPRControle.readAll(controleOAGRPR, 10,returnRecords, {DBContainer controleResultOAGRPR ->
             String stdt2 =  resultOAGRLN.get("UWSTDT").toString()
+            logger.debug("OAPRPR control, stdt2 = " + stdt2 + ", lvdt = " + lvdt +", OLSTDT = " + controleResultOAGRPR.get("OLSTDT").toString() + ", OLFDAT = " + controleResultOAGRPR.get("OLFDAT").toString())
             if(lvdt > (controleResultOAGRPR.get("OLSTDT").toString() as int)){
               stdt2 = lvdt
             }
             if(lvdt < (controleResultOAGRPR.get("OLFDAT").toString() as int)){
               stdt2 = resultOAGRLN.get("UWFDAT").toString()
             }
+
+
+
             Double sapr = controleResultOAGRPR.get("OLAGPR").toString() as Double
             Double SACD = controleResultOAGRPR.get("OLSACD").toString() as Double
             if(SACD==0){
@@ -195,25 +210,30 @@ public class EXT030 extends ExtendM3Batch {
             logger.debug("SAPR=>"+calculSAPR)
             logger.debug("AGP1=>"+agp1)
 
-            logger.debug("Format 1: "+format.format(calculSAPR))
-            logger.debug("Format 2: "+format.format(agp1))
+            logger.debug("Start Control")
 
             Map<String,String> paramsAddAgrLnPrice
             if(agp2!=0 && agp1!=0){
+              logger.debug("control is format.format(calculSAPR):" + format.format(calculSAPR) + " vs format.format(agp1): " + format.format(agp1))
               if(controleResultOAGRPR.get("OLDIPC").toString()=="" && format.format(calculSAPR)==format.format(agp1)){
+                logger.debug("DIPC agp1 equality control")
                 controle = true;
               }
               if(controleResultOAGRPR.get("OLDIPC").toString()!="" && format.format(calculSAPR)==format.format(agp1)){
+                logger.debug("DIPC agp1 diff control")
                 controle = true;
               }
             }else{
+              logger.debug("Agp1 or Agp2 is 0")
               controle = true;
             }
           })
 
           if(controle){
 
-            if(agno == "" || agno != resultOAGRLN.get("UWAGNO").toString()){
+            logger.debug("Controle is OK, agno = " + agno + " || resultOAGRLN.get('UWAGNO').toString() is : " + resultOAGRLN.get("UWAGNO").toString())
+
+            //if(agno == "" || agno != resultOAGRLN.get("UWAGNO").toString()){
               agno = resultOAGRLN.get("UWAGNO").toString()
 
 
@@ -243,7 +263,7 @@ public class EXT030 extends ExtendM3Batch {
               logger.debug("ITNO copy => "+itnz)
               logger.debug("FDAT => "+resultOAGRLN.get("UWFDAT").toString())
               logger.debug("LVDT => "+resultOAGRLN.get("UWLVDT").toString())
-              logger.debug("OIS060MI AddCustBlkAgrLn!")
+              logger.debug("OIS060MI AddCustBlkAgrLn! with FDAT = " +resultOAGRLN.get("UWFDAT").toString() + " and LVDT = " + resultOAGRLN.get("UWLVDT").toString())
 
               miCaller.call("OIS060MI", "AddCustBlkAgrLn", paramsAddCustBlkAgrLn , closureAddCustBlkAgrLn )
 
@@ -284,6 +304,7 @@ public class EXT030 extends ExtendM3Batch {
                 DecimalFormat format = new DecimalFormat("0.##")
                 logger.debug("SAPR=>"+calculSAPR)
                 logger.debug("AGP1=>"+agp1)
+                logger.debug("AGP2=>"+agp2)
 
                 logger.debug("Format 1: "+format.format(calculSAPR))
                 logger.debug("Format 2: "+format.format(agp1))
@@ -382,77 +403,128 @@ public class EXT030 extends ExtendM3Batch {
 
               if(valid){
                 logger.debug("UPDATE OAGRLN OK!")
+
+                Integer temp_lvdt = lvdt
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-                LocalDate localDate = LocalDate.parse(''+lvdt,formatter)
-                localDate = localDate.minusDays(1)
-                String target_lvdt = localDate.format(formatter) as String
-                logger.debug("LVDT:"+target_lvdt)
-                Map<String,String> paramsOIS060 = ["CUNO":resultOAGRLN.get("UWCUNO").toString()
-                                             ,"AGNO":resultOAGRLN.get("UWAGNO").toString()
-                                             ,"FDAT":resultOAGRLN.get("UWFDAT").toString()
-                                             ,"STDT":resultOAGRLN.get("UWSTDT").toString()
-                                             ,"PREX":resultOAGRLN.get("UWPREX").toString()
-                                             ,"OBV1":resultOAGRLN.get("UWOBV1").toString()
-                                             ,"OBV2":resultOAGRLN.get("UWOBV2").toString()
-                                             ,"OBV3":resultOAGRLN.get("UWOBV3").toString()
-                                             ,"OBV4":resultOAGRLN.get("UWOBV4").toString()
-                                             ,"LVDT":target_lvdt]
-                Closure<?> closureOIS060 = {Map<String, String> response ->
-                  logger.debug("OIS060MI Response = ${response}")
+                LocalDate localDate
+
+                if(lvdt < (resultOAGRLN.get("UWSTDT").toString() as int) ){
+                  temp_lvdt = (resultOAGRLN.get("UWSTDT").toString() as int )
+                  localDate = LocalDate.parse(''+temp_lvdt,formatter)
+                  //localDate = localDate.minusDays(1)
+                }else{
+                  localDate = LocalDate.parse(''+temp_lvdt,formatter)
+                  localDate = localDate.minusDays(1)
                 }
+
+
+
+                String target_lvdt = localDate.format(formatter) as String
+                logger.debug("targetLVDT:"+target_lvdt)
+                logger.debug("ready to update line : " + resultOAGRLN.get("UWAGLN").toString())
+                Map<String,String> paramsOIS060 = ["CUNO":resultOAGRLN.get("UWCUNO").toString().trim()
+                                                   ,"AGNO":resultOAGRLN.get("UWAGNO").toString().trim()
+                                                   ,"FDAT":resultOAGRLN.get("UWFDAT").toString().trim()
+                                                   ,"STDT":resultOAGRLN.get("UWSTDT").toString().trim()
+                                                   ,"PREX":resultOAGRLN.get("UWPREX").toString()
+                                                   ,"OBV1":resultOAGRLN.get("UWOBV1").toString().trim()
+                                                   ,"OBV2":resultOAGRLN.get("UWOBV2").toString()
+                                                   ,"OBV3":resultOAGRLN.get("UWOBV3").toString()
+                                                   ,"OBV4":resultOAGRLN.get("UWOBV4").toString()
+                                                   ,"LVDT":target_lvdt]
+                Closure<?> closureOIS060 = {Map<String, String> response ->
+                  if(response.errorMessage){
+                    addLineErrorEXT830(appl,USID,"OIS060MI", "UpdCustBlkAgrLn", paramsOIS060, response.errorMessage)
+
+                    error = 1
+                  }
+                }
+
+                logger.debug("UpdCustBlkAgrLn params : " )
+                logger.debug("CUNO:" + resultOAGRLN.get("UWCUNO").toString().trim())
+                logger.debug("AGNO:" + resultOAGRLN.get("UWAGNO").toString().trim())
+                logger.debug("FDAT:" + resultOAGRLN.get("UWFDAT").toString().trim())
+                logger.debug("STDT:" + resultOAGRLN.get("UWSTDT").toString().trim())
+                logger.debug("PREX:" + resultOAGRLN.get("UWPREX").toString())
+                logger.debug("OBV1:" + resultOAGRLN.get("UWOBV1").toString().trim())
+                logger.debug("LVDT:" + target_lvdt)
                 miCaller.call("OIS060MI", "UpdCustBlkAgrLn", paramsOIS060, closureOIS060)
 
-                //get OIS061 record then add one for new itno and new date
+                //get OIS061 record ZLOT and ZSLO then add one record with them for new itno and new date
                 DBAction rechercheEXT061 = database.table("EXT061").index("00").selection("EXCUNO","EXAGNO","EXFDAT",
                   "EXSTDT","EXPREX","EXOBV1","EXOBV2","EXOBV3","EXOBV4","EXZLOT","EXTX40","EXZSLO","EXZQTS",
                   "EXZTRE","EXSTAC","EXPRRF","EXP001","EXP002","EXP003","EXP004","EXP005","EXP006","EXP007","EXP008"
                   ,"EXP009","EXP010").build()
                 DBContainer containerEXT061 = rechercheEXT061.getContainer()
+
+                String oagrlnCuno = resultOAGRLN.get("UWCUNO").toString()
+                String oagrlnAgno = resultOAGRLN.get("UWAGNO").toString()
+                String oagrlnFdat = resultOAGRLN.get("UWFDAT").toString()
+                String oagrlnStdt = resultOAGRLN.get("UWSTDT").toString()
+                String oagrlnPrex = resultOAGRLN.get("UWPREX").toString()
+                String oagrlnObv1 = itno
+
+
                 containerEXT061.set("EXCONO", currentCompany)
-                containerEXT061.set("EXCUNO",resultOAGRLN.get("UWCUNO").toString())
-                containerEXT061.set("EXAGNO",resultOAGRLN.get("UWAGNO").toString())
+                containerEXT061.set("EXCUNO",oagrlnCuno)
+                containerEXT061.set("EXAGNO",oagrlnAgno)
                 containerEXT061.set("EXFDAT",resultOAGRLN.get("UWFDAT").toString() as Integer)
                 containerEXT061.set("EXSTDT",resultOAGRLN.get("UWSTDT").toString() as Integer)
-                containerEXT061.set("EXPREX",resultOAGRLN.get("UWPREX").toString())
-                containerEXT061.set("EXOBV1",resultOAGRLN.get("UWOBV1").toString())
+                containerEXT061.set("EXPREX",oagrlnPrex)
+                containerEXT061.set("EXOBV1",itno)
 
-                logger.debug("Ready to check in EXT061")
+                logger.debug("Ready to check in EXT061 record : ${oagrlnCuno} | ${oagrlnAgno} | ${oagrlnFdat} | ${oagrlnStdt} | ${oagrlnPrex} | ${oagrlnObv1} ")
 
-                rechercheEXT061.readAll(containerEXT061,6,returnRecords,{DBContainer resultEXT061 ->
-                    Map<String,String> paramsEXT061 = [
-                      "CUNO":resultEXT061.get("EXCUNO").toString()
-                       ,"AGNO":resultEXT061.get("EXAGNO").toString()
-                       ,"FDAT":resultEXT061.get("EXFDAT").toString()
-                       ,"STDT":lvdt.toString()
-                       ,"PREX":resultEXT061.get("EXPREX").toString()
-                       ,"OBV1":itnz.toString()
-                       ,"OBV2":resultEXT061.get("EXOBV2").toString()
-                       ,"OBV3":resultEXT061.get("EXOBV3").toString()
-                       ,"OBV4":resultEXT061.get("EXOBV4").toString()
-                       ,"ZLOT":resultEXT061.get("EXZLOT").toString()
-                       ,"TX40":resultEXT061.get("EXTX40").toString()
-                       ,"ZSLO":resultEXT061.get("EXZSLO").toString()
-                       ,"ZQTS":resultEXT061.get("EXZQTS").toString()
-                       ,"ZTRE":resultEXT061.get("EXZTRE").toString()
-                       ,"STAC":resultEXT061.get("EXSTAC").toString()
-                       ,"PRRF":resultEXT061.get("EXPRRF").toString()
-                       ,"P001":resultEXT061.get("EXP001").toString()
-                       ,"P002":resultEXT061.get("EXP002").toString()
-                       ,"P003":resultEXT061.get("EXP003").toString()
-                       ,"P004":resultEXT061.get("EXP004").toString()
-                       ,"P005":resultEXT061.get("EXP005").toString()
-                       ,"P006":resultEXT061.get("EXP006").toString()
-                       ,"P007":resultEXT061.get("EXP007").toString()
-                       ,"P008":resultEXT061.get("EXP008").toString()
-                       ,"P009":resultEXT061.get("EXP009").toString()
-                       ,"P010":resultEXT061.get("EXP010").toString()
-                    ]
+                rechercheEXT061.readAll(containerEXT061,7,returnRecords,{DBContainer resultEXT061 ->
+
+                  String ext061Cuno = resultEXT061.get("EXCUNO").toString()
+                  String ext061Agno = resultEXT061.get("EXAGNO").toString()
+                  String ext061Fdat = resultEXT061.get("EXFDAT").toString()
+                  String ext061Stdt = resultEXT061.get("EXSTDT").toString()
+                  String ext061Prex = resultEXT061.get("EXPREX").toString()
+                  String ext061Obv1 = resultEXT061.get("EXOBV1").toString()
+                  String ext061Zlot = resultEXT061.get("EXZLOT").toString()
+                  String ext061Zslo = resultEXT061.get("EXZSLO").toString()
+
+                  logger.debug("EXT061 Found : ${ext061Cuno} | ${ext061Agno} | ${ext061Fdat} | ${ext061Stdt} | ${ext061Prex} | ${ext061Obv1} | ${ext061Zlot} | ${ext061Zslo}")
+
+                  Map<String,String> paramsEXT061 = [
+                    "CUNO":resultEXT061.get("EXCUNO").toString()
+                    ,"AGNO":resultEXT061.get("EXAGNO").toString()
+                    ,"FDAT":resultEXT061.get("EXFDAT").toString()
+                    ,"STDT":lvdt.toString()
+                    ,"PREX":resultEXT061.get("EXPREX").toString()
+                    ,"OBV1":itnz.toString()
+                    ,"OBV2":resultEXT061.get("EXOBV2").toString()
+                    ,"OBV3":resultEXT061.get("EXOBV3").toString()
+                    ,"OBV4":resultEXT061.get("EXOBV4").toString()
+                    ,"ZLOT":resultEXT061.get("EXZLOT").toString()
+                    ,"TX40":resultEXT061.get("EXTX40").toString()
+                    ,"ZSLO":resultEXT061.get("EXZSLO").toString()
+                    ,"ZQTS":resultEXT061.get("EXZQTS").toString()
+                    ,"ZTRE":resultEXT061.get("EXZTRE").toString()
+                    ,"STAC":resultEXT061.get("EXSTAC").toString()
+                    ,"PRRF":resultEXT061.get("EXPRRF").toString()
+                    ,"P001":resultEXT061.get("EXP001").toString()
+                    ,"P002":resultEXT061.get("EXP002").toString()
+                    ,"P003":resultEXT061.get("EXP003").toString()
+                    ,"P004":resultEXT061.get("EXP004").toString()
+                    ,"P005":resultEXT061.get("EXP005").toString()
+                    ,"P006":resultEXT061.get("EXP006").toString()
+                    ,"P007":resultEXT061.get("EXP007").toString()
+                    ,"P008":resultEXT061.get("EXP008").toString()
+                    ,"P009":resultEXT061.get("EXP009").toString()
+                    ,"P010":resultEXT061.get("EXP010").toString()
+                  ]
 
                   Closure<?> closureEXT061 = {Map<String, String> response ->
                     logger.debug("EXT061MI Response = ${response}")
+                    logger.debug("Response = ${response}")
+                    addLineErrorEXT830(appl,USID,"EXT061MI", "AddCustBlkAgrLn", paramsEXT061, response.errorMessage)
+                    error = 1
                   }
 
-                  logger.debug("Ready to call in EXT061 to add : Lot = ${resultEXT061.get("EXZLOT").toString() } for ${ itnz.toString() }")
+                  logger.debug("Ready to call in EXT061 to add : Lot = ${resultEXT061.get('EXZLOT').toString() } and Zslo: ${resultEXT061.get('EXZLOT').toString() } for ${ itnz.toString() }")
                   miCaller.call("EXT061MI", "AddCustBlkAgrLn", paramsEXT061, closureEXT061)
                 })
 
@@ -460,9 +532,11 @@ public class EXT030 extends ExtendM3Batch {
                 logger.debug("UPDATE OAGRLN KO!")
               }
 
-            }
+            //}
 
 
+          }else{
+            logger.debug("Controle NOK")
           }
         }
       }
@@ -473,22 +547,43 @@ public class EXT030 extends ExtendM3Batch {
 
   //find item
   public article_cible_inexistant(DBContainer saveOAGRLN){
-    boolean valid = true
+    boolean valid = false
     DBAction rechercheOAGRLN = database.table("OAGRLN").index("50").selection("UWAGST","UWLVDT").build()
     DBContainer OAGRLN = rechercheOAGRLN.getContainer()
     OAGRLN.set("UWCONO",saveOAGRLN.get("UWCONO").toString() as Integer)
-    OAGRLN.set("UWCUNO",saveOAGRLN.get("UWCUNO").toString())
+    if(cuno){
+      OAGRLN.set("UWCUNO", cuno)
+    }else{
+      OAGRLN.set("UWCUNO",saveOAGRLN.get("UWCUNO").toString())
+    }
+
     OAGRLN.set("UWAGNO",saveOAGRLN.get("UWAGNO").toString())
     OAGRLN.set("UWFDAT",saveOAGRLN.get("UWFDAT").toString() as Integer)
     OAGRLN.set("UWSTDT",saveOAGRLN.get("UWSTDT").toString() as Integer)
     OAGRLN.set("UWOBV1",itnz)
-    rechercheOAGRLN.readAll(OAGRLN,6,{ DBContainer resultOAGRLN ->
-      Integer agstControl = resultOAGRLN.get("UWAGST").toString() as Integer
+    if(rechercheOAGRLN.readAll(OAGRLN,6,{ DBContainer resultOAGRLN ->
+      /*Integer agstControl = resultOAGRLN.get("UWAGST").toString() as Integer
       Integer lvdtControl = resultOAGRLN.get("UWSTDT").toString() as Integer
       if(agstControl<80 && lvdtControl>=lvdt){
         valid = false
       }
-    })
+      if(!cuno.isBlank() && resultOAGRLN.get("UWCUNO").toString() != cuno){
+        logger.debug("ArticleCible_inexistant avec Cuno différent")
+        valid = false
+      }*/
+
+      logger.debug("ArticleCible_inexistant ... existe for record : cuno = " + resultOAGRLN.get("UWCUNO") + ", itno : " + resultOAGRLN.get("UWOBV1") + ", AGNO : " + resultOAGRLN.get("UWAGNO") + ", AGLN :"+ resultOAGRLN.get("UWAGLN") + " , STDT :" + resultOAGRLN.get("UWSTDT") + ", LVDT : " + resultOAGRLN.get("UWLVDT") )
+    })){}else{
+
+      if( (saveOAGRLN.get("UWLVDT") as int) >= lvdt ){
+        logger.debug("ArticleCible_inexistant ... réellement inexistant et valide for record : cuno = " + cuno + ", itno : " + itnz + ", AGNO : " + saveOAGRLN.get("UWAGNO") + ", STDT :" + saveOAGRLN.get("UWSTDT") + ", LVDT = " + saveOAGRLN.get("UWLVDT") )
+        valid = true
+      }else{
+        logger.debug("ArticleCible_inexistant ... réellement inexistant mais invalide for record : cuno = " + cuno + ", itno : " + itnz + ", AGNO : " + saveOAGRLN.get("UWAGNO") + ", STDT :" + saveOAGRLN.get("UWSTDT")+ ", LVDT = " + saveOAGRLN.get("UWLVDT") )
+      }
+      //valid = true
+
+    }
     logger.debug("Article_cible_inexistant is valid: "+valid)
     return valid
   }
