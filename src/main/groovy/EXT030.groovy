@@ -541,7 +541,6 @@ public class EXT030 extends ExtendM3Batch {
       OAGRHE.set("UYCONO",currentCompany)
       OAGRHE.set("UYCUNO",OAGRLN.get("UWCUNO").toString())
       OAGRHE.set("UYAGNO",OAGRLN.get("UWAGNO").toString())
-      //OAGRHE.set("UYSTDT",OAGRLN.get("UWSTDT").toString() as Integer)
       OAGRHE.set("UYSTDT",OAGRLN.get("UWFDAT").toString() as Integer)
       if(rechercheOAGRHE.read(OAGRHE)){
         current_agtp = OAGRHE.get("UYAGTP").toString().trim()
